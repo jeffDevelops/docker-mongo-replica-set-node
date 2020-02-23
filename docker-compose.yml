@@ -1,0 +1,50 @@
+version: "3.4"
+services:
+  mongo:
+    image: mongo:latest
+    container_name: mongodb
+    hostname: mongodb
+    volumes:
+      - ./data/mongodb/mongod.conf:/etc/mongod.conf
+      - ./data/mongodb/data/db/:/data/db/
+      - ./data/mongodb/data/log/:/var/log/mongodb/
+      - ./data/mongodb/initdb.d/:/docker-entrypoint-initdb.d/
+    env_file:
+      - .env
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE}
+      MONGO_REPLICA_SET_NAME: ${MONGO_REPLICA_SET_NAME}
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: test $$(echo "rs.initiate().ok || rs.status().ok" | mongo -u $${MONGO_INITDB_ROOT_USERNAME} -p $${MONGO_INITDB_ROOT_PASSWORD} --quiet) -eq 1
+      interval: 10s
+      start_period: 30s
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+
+  api:
+    depends_on:
+      - mongo
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    command: sh -c "/wait && npm run dev"
+    ports:
+      - 3000:3000
+    env_file: ./.env
+    environment:
+      - WAIT_HOSTS=mongodb:27017
+      - WAIT_HOSTS_TIMEOUT=300
+      - WAIT_SLEEP_INTERVAL=2
+      - WAIT_HOST_CONNECT_TIMEOUT=30
+      - MONGO_URL=${MONGO_URL}
+      - MONGO_INITDB_DATABASE=${MONGO_INITDB_DATABASE}
+      - MONGO_INITDB_USERNAME=${MONGO_INITDB_USERNAME}
+      - MONGO_INITDB_PASSWORD=${MONGO_INITDB_PASSWORD}
+    volumes:
+      - ./server/src:/app/src
+      - ./server/dist:/app/dist
+      - ./server/package.json:/app/package.json
+      - ./server/tsconfig.json:/app/tsconfig.json
